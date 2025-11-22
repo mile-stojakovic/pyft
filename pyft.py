@@ -1,5 +1,6 @@
 import argparse
 from components import *
+import output
 
 parser = argparse.ArgumentParser()
 
@@ -15,4 +16,4 @@ match args.context:
     case "entry":
         print("Entry settings")
     case _:
-        print("error: unknown context. Must be \"account\", \"category\", or \"entry\"")
+        output.error("Unknown context. Must be \"account\", \"category\", or \"entry\"")
