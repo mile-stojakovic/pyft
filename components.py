@@ -11,27 +11,17 @@ class Category:
         self.name = name
         self.color = color
 
-    def update_db(self, connection):
+    def update_db(self, connection: sql.Connection):
         cur = connection.cursor()
-        cur.execute("INSERT INTO categories VALUES (?, ?)", self.name, self.color)
+        cur.execute("""
+            INSERT INTO categories VALUES (?, ?)
+            ON CONFLICT (name)
+            DO UPDATE SET name = excluded.?, color = excluded.?;
+            """, self.name, self.color, self.name, self.color)
+
         connection.commit()
 
-class Entry:
-    name: str
-    amount: float
-    category: Category
-    date: dt.date
 
-    def __init__(self, name: str, amount: float, category: Category, date: dt.date):
-        self.name = name
-        self.amount = amount
-        self.category = category
-        self.date = date
-
-    def update_db(self, connection):
-        cur = connection.cursor()
-        cur.execute("INSERT INTO entries VALUES (?, ?, ?, ?)", self.name, self.amount, self.category.name, self.date.isoformat())
-        connection.commit()
 
 class Account:
     name: str
@@ -41,10 +31,43 @@ class Account:
         self.name = name
         self.balance = 0
 
-    def update_db(self, connection):
+    def update_db(self, connection: sql.Connection):
         cur = connection.cursor()
-        cur.execute("INSERT INTO accounts VALUES (?, ?)", self.name, self.balance)
+        cur.execute("""
+            INSERT INTO accounts VALUES (?, ?)
+            ON CONFLICT (name)
+            DO UPDATE SET name = excluded.?, balance = excluded.?;
+            """, self.name, self.balance, self.name, self.balance)
+
         connection.commit()
+
+
+
+class Entry:
+    name: str
+    amount: float
+    category: Category
+    account: Account
+    date: dt.date
+
+    def __init__(self, name: str, amount: float, category: Category, account: Account, date: dt.date):
+        self.name = name
+        self.amount = amount
+        self.category = category
+        self.account = account
+        self.date = date
+
+    def update_db(self, connection: sql.Connection):
+        cur = connection.cursor()
+        cur.execute("""
+            INSERT INTO accounts VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT (name)
+            DO UPDATE SET name = excluded.?, accountname = excluded.?, amount = excluded.?, date = excluded.?, category = excluded.?;
+            """, self.name, self.account.name, self.amount, self.date.isoformat(), self.category.name, self.name, self.account.name, self.amount, self.date.isoformat(), self.category.name)
+
+        connection.commit()
+
+
 
 def init_db():
     con = sql.connect(DB_NAME)
@@ -71,3 +94,4 @@ def init_db():
     )""")
 
     con.commit()
+    con.close()
