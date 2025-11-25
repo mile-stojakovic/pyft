@@ -1,57 +1,74 @@
 import sqlite3 as sql
 import datetime as dt
+import output
 
 DB_NAME = "pyft.db"
 
-class Category:
+class PYFTComponent:
+    format_name = "component"
     name: str
+
+    def __init__(self, name: str):
+        self.name = name
+
+    def update_db(self, connection: sql.Connection) -> None:
+        pass
+
+
+
+class Category(PYFTComponent):
+    format_name = "category"
     color: str
 
     def __init__(self, name: str, color: str):
-        self.name = name
+        super().__init__(name)
         self.color = color
 
     def update_db(self, connection: sql.Connection):
         cur = connection.cursor()
-        cur.execute("""
-            INSERT INTO categories VALUES (?, ?)
-            ON CONFLICT (name)
-            DO UPDATE SET name = excluded.?, color = excluded.?;
-            """, self.name, self.color, self.name, self.color)
+        cur.execute("SELECT * FROM categories WHERE name = ?", (self.name,))
+        res = cur.fetchall()
+        if len(res) == 0:
+            cur.execute("INSERT INTO categories VALUES (?, ?)", (self.name, self.color,))
+        else:
+            output.warning(f"Already found category with name \"{self.name}\". Updating...")
+            cur.execute("UPDATE categories SET name = ?, color = ? WHERE name = ?", (self.name, self.color, self.name,))
 
         connection.commit()
 
 
 
-class Account:
-    name: str
+
+class Account(PYFTComponent):
+    format_name = "account"
     balance: float
 
     def __init__(self, name: str):
-        self.name = name
+        super().__init__(name)
         self.balance = 0
 
     def update_db(self, connection: sql.Connection):
         cur = connection.cursor()
-        cur.execute("""
-            INSERT INTO accounts VALUES (?, ?)
-            ON CONFLICT (name)
-            DO UPDATE SET name = excluded.?, balance = excluded.?;
-            """, self.name, self.balance, self.name, self.balance)
+        cur.execute("SELECT * FROM accounts WHERE name = ?", (self.name,))
+        res = cur.fetchall()
+        if len(res) == 0:
+            cur.execute("INSERT INTO accounts VALUES (?, ?)", (self.name, self.balance,))
+        else:
+            output.warning(f"Already found account with name \"{self.name}\". Updating...")
+            cur.execute("UPDATE accounts SET name = ?, balance = ? WHERE name = ?", (self.name, self.balance, self.name,))
 
         connection.commit()
 
 
 
-class Entry:
-    name: str
+class Entry(PYFTComponent):
     amount: float
     category: Category
     account: Account
     date: dt.date
 
     def __init__(self, name: str, amount: float, category: Category, account: Account, date: dt.date):
-        self.name = name
+        super().__init__(name)
         self.amount = amount
         self.category = category
         self.account = account
@@ -59,14 +76,15 @@ class Entry:
 
     def update_db(self, connection: sql.Connection):
         cur = connection.cursor()
-        cur.execute("""
-            INSERT INTO accounts VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT (name)
-            DO UPDATE SET name = excluded.?, accountname = excluded.?, amount = excluded.?, date = excluded.?, category = excluded.?;
-            """, self.name, self.account.name, self.amount, self.date.isoformat(), self.category.name, self.name, self.account.name, self.amount, self.date.isoformat(), self.category.name)
+        cur.execute("SELECT * FROM entries WHERE name = ?", (self.name,))
+        res = cur.fetchall()
+        if len(res) == 0:
+            cur.execute("INSERT INTO entries VALUES (?, ?, ?, ?, ?)", (self.name, self.amount, self.category.name, self.account.name, self.date.isoformat(),))
+        else:
+            output.warning(f"Already found entry with name \"{self.name}\". Updating...")
+            cur.execute("UPDATE entries SET name = ?, amount = ?, category = ?, accountname = ?, date = ? WHERE name = ?", (self.name, self.amount, self.category.name, self.account.name, self.date.isoformat(), self.name,))
 
         connection.commit()
-
 
 
 def init_db():
