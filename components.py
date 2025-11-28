@@ -43,9 +43,9 @@ class Account(PYFTComponent):
     format_name = "account"
     balance: float
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, balance: float = 0):
         super().__init__(name)
-        self.balance = 0
+        self.balance = balance
 
     def update_db(self, connection: sql.Connection):
         cur = connection.cursor()
@@ -62,27 +62,28 @@ class Account(PYFTComponent):
 
 
 class Entry(PYFTComponent):
+    format_name = "entry"
     amount: float
-    category: Category
-    account: Account
+    category_name: str
+    account_name: str
     date: dt.date
 
-    def __init__(self, name: str, amount: float, category: Category, account: Account, date: dt.date):
+    def __init__(self, name: str, amount: float, category_name: str, account_name: str, date: str):
         super().__init__(name)
         self.amount = amount
-        self.category = category
-        self.account = account
-        self.date = date
+        self.category_name = category_name
+        self.account_name = account_name
+        self.date = output.str_to_date(date)
 
     def update_db(self, connection: sql.Connection):
         cur = connection.cursor()
         cur.execute("SELECT * FROM entries WHERE name = ?", (self.name,))
         res = cur.fetchall()
         if len(res) == 0:
-            cur.execute("INSERT INTO entries VALUES (?, ?, ?, ?, ?)", (self.name, self.amount, self.category.name, self.account.name, self.date.isoformat(),))
+            cur.execute("INSERT INTO entries VALUES (?, ?, ?, ?, ?)", (self.name, self.amount, self.category_name, self.account_name, self.date.isoformat(),))
         else:
             output.warning(f"Already found entry with name \"{self.name}\". Updating...")
-            cur.execute("UPDATE entries SET name = ?, amount = ?, category = ?, accountname = ?, date = ? WHERE name = ?", (self.name, self.amount, self.category.name, self.account.name, self.date.isoformat(), self.name,))
+            cur.execute("UPDATE entries SET name = ?, amount = ?, category = ?, accountname = ?, date = ? WHERE name = ?", (self.name, self.amount, self.category_name, self.account_name, self.date.isoformat(), self.name,))
 
         connection.commit()
 
