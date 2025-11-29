@@ -15,7 +15,8 @@ class PYFTParser(argparse.ArgumentParser):
 
 
 # Helper functions for handling optional args
-def parse_create(con: sql.Connection, comp: PYFTComponent, *args) -> None:
+# Returns true/false depending on whether the created component is a duplicate of a pre-existing one
+def parse_create(con: sql.Connection, comp: PYFTComponent, *args) -> bool:
     obj = None
 
     try:
@@ -28,10 +29,11 @@ def parse_create(con: sql.Connection, comp: PYFTComponent, *args) -> None:
                 output.error("Expected 2 arguments (name, balance).")
             case "entry":
                 output.error("Expected 5 arguments (name, amount, category, account, date).")
-        return
+        return False
 
-    obj.update_db(con)
+    res = obj.update_db(con)
     output.success(f"Created {obj.format_name} with name \"{obj.name}\".")
+    return res
 
 
 def parse_list(con: sql.Connection, comp: PYFTComponent) -> None:
@@ -45,21 +47,34 @@ def parse_list(con: sql.Connection, comp: PYFTComponent) -> None:
 
     cur = con.cursor()
 
-    cur.execute(f"SELECT * FROM {objname}")
+    if objname == "entries":
+        cur.execute("SELECT * FROM entries ORDER BY date DESC")
+    else:
+        cur.execute(f"SELECT * FROM {objname}")
+
     rows = cur.fetchall()
 
     if len(rows) == 0 or rows is None:
         output.error(f"No {objname} found.")
     else:
         print(f"Found {len(rows)} {objname}:")
-        print("Placeholder") # Fix this also
+
+        match objname:
+            case "accounts":
+                print(colored(f"{"Account Name":<16}{"Balance":<24}", attrs=["bold"]))
+            case "categories":
+                print(colored(f"{"Category Name":<16}", attrs=["bold"]))
+            case "entries":
+                print(colored(f"{"Name":<16}{"Account":<16}{"Amount":<15}{"Date":<16}{"Category":<16}", attrs=["bold"]))
+            case _:
+                print("Placeholder")
+
         for r in rows:
             for elem in r:
                 if isinstance(elem, float) or isinstance(elem, int):
-                    print(colored(output.currency(elem), ("green" if elem > 0 else "red")), end="") # TODO: Fix tabs
+                    print(f"{colored(output.currency(elem), ("green" if elem > 0 else "red")):<24}", end="") # TODO: Fix tabs
                 else:
-                    print(elem, end="")
-                print("\t", end="")
+                    print(f"{elem:<16}", end="")
             print()
 
 
@@ -73,6 +88,16 @@ def parse_delete(con: sql.Connection, comp: PYFTComponent, *args) -> None:
     if len(rows) == 0:
         output.error(f"No {comp.format_name} found with the name \"{accname}\".")
     else:
+        if objname == "accounts":
+            output.warning(f"All entries with the account name \"{accname}\" will be deleted. Proceed? (y/n)")
+
+            confirm = input().lower() == "y"
+
+            if not confirm:
+                return
+
+            cur.execute("DELETE FROM entries WHERE accountname = ?", (accname,))
+
         cur.execute(f"DELETE FROM {objname} WHERE name = ?", (accname,))
         output.success(f"Deleted {comp.format_name} \"{accname}\".")
 
@@ -81,9 +106,17 @@ def parse_delete(con: sql.Connection, comp: PYFTComponent, *args) -> None:
 parser = PYFTParser(prog="pyft", description="A simple CLI-based financial tracker written in Python.")
 
 parser.add_argument("component", help="The component in which to operate (account, category, or entry)")
-parser.add_argument("-c", "--create", nargs="+", help="Create a new instance of the component", metavar="ARG")
-parser.add_argument("-l", "--list", action="store_true", help="List information about accounts, entries, or categories")
-parser.add_argument("-d", "--delete", nargs=1, help="Deletes a component by name", metavar="NAME")
+
+main_group = parser.add_argument_group("component options", "Main options for interfacing with components")
+
+main_args = main_group.add_mutually_exclusive_group()
+
+main_args.add_argument("-c", "--create", nargs="+", help="Create a new instance of the component", metavar="ARG")
+main_group.add_argument("--exempt", action="store_true", help="Tells PYFT to not modify an account's balance based on the amount of a created entry")
+main_args.add_argument("-l", "--list", action="store_true", help="List information about accounts, entries, or categories")
+main_args.add_argument("-d", "--delete", nargs=1, help="Deletes a component by name", metavar="NAME")
+
+
 
 con = sql.connect(DB_NAME)
 cur = con.cursor()
@@ -123,7 +156,36 @@ if __name__ == "__main__":
 
         case "entry":
             if args.create:
-                parse_create(con, Entry, args.create)
+                num = 0
+                try:
+                    num = float(args.create[1])
+                except ValueError:
+                    output.error("Amount must be a number.")
+                except IndexError:
+                    output.error("Expected 5 arguments (name, amount, category, account, date).")
+                else:
+                    if num == 0:
+                        output.error("Cannot create an entry with a dollar value of 0.")
+                    else:
+                        acc_name = args.create[3]
+                        cat_name = args.create[2]
+
+                        cur.execute("SELECT * FROM accounts WHERE name = ?", (acc_name,))
+                        res = cur.fetchall()
+
+                        if len(res) == 0:
+                            output.error(f"Unknown account \"{acc_name}\".")
+                        else:
+                            cur.execute("SELECT * FROM categories WHERE name = ?", (cat_name,))
+                            res = cur.fetchall()
+
+                            if len(res) == 0:
+                                output.error(f"Unknown category \"{cat_name}\".")
+                            else:
+                                is_duplicate = parse_create(con, Entry, args.create)
+                                if not is_duplicate and not args.exempt:
+                                    cur.execute("UPDATE accounts SET balance = balance + ? WHERE name = ?", (num, acc_name))
+
 
             if args.list:
                 parse_list(con, Entry)
@@ -133,7 +195,7 @@ if __name__ == "__main__":
 
 
         case _:
-            output.error("Unknown component. Must be \"account\", \"category\", or \"entry\"")
+            output.error("Unknown component. Must be \"account\", \"category\", or \"entry\".")
 
     con.commit()
     con.close()
