@@ -1,12 +1,34 @@
-import os
+# File: pyft.py
+# Date: 12/5/2025
+# Authors:
+# Mile Stojakovic
+#     mstojako
+#
+# Team: 6
+#
+# ELECTRONIC SIGNATURE
+# Mile Stojakovic
+#
+# The electronic signatures above indicate that the program
+# submitted for evaluation is the combined effort of all
+# team members and that each member of the team was an
+# equal participant in its creation. In addition, each
+# member of the team has a general understanding of
+# all aspects of the program development and execution.
+#
+#  Version 1.0    Original    December 2025
+# Main program logic for PYFT
+
 import sqlite3 as sql
 import argparse
 from termcolor import colored
+from functools import reduce
 from components import *
 import output
 
 namemap = {"account": "accounts", "category": "categories", "entry": "entries"}
 
+# Custom parser class, only used to customize error handling
 class PYFTParser(argparse.ArgumentParser):
     def error(self, message):
         output.error(message)
@@ -47,12 +69,15 @@ def parse_list(con: sql.Connection, comp: PYFTComponent) -> None:
 
     cur = con.cursor()
 
+
     if objname == "entries":
         cur.execute("SELECT * FROM entries ORDER BY date DESC")
     else:
         cur.execute(f"SELECT * FROM {objname}")
 
+
     rows = cur.fetchall()
+
 
     if len(rows) == 0 or rows is None:
         output.error(f"No {objname} found.")
@@ -63,18 +88,30 @@ def parse_list(con: sql.Connection, comp: PYFTComponent) -> None:
             case "accounts":
                 print(colored(f"{"Account Name":<16}{"Balance":<24}", attrs=["bold"]))
             case "categories":
-                print(colored(f"{"Category Name":<16}", attrs=["bold"]))
+                print(colored(f"{"Category Name":<15}{"Color":<16}", attrs=["bold"]))
             case "entries":
                 print(colored(f"{"Name":<16}{"Account":<16}{"Amount":<15}{"Date":<16}{"Category":<16}", attrs=["bold"]))
             case _:
                 print("Placeholder")
 
+
         for r in rows:
-            for elem in r:
+
+            for index, elem in enumerate(r):
+
                 if isinstance(elem, float) or isinstance(elem, int):
-                    print(f"{colored(output.currency(elem), ("green" if elem > 0 else "red")):<24}", end="") # TODO: Fix tabs
+                    print(f"{colored(output.currency(elem), ("green" if elem > 0 else "red")):<24}", end="")
                 else:
-                    print(f"{elem:<16}", end="")
+                    if objname == "categories":
+                        print(colored(f"{elem:<15}", output.hex_to_rgb(r[1])), end="") # TODO: convert hex to rgb
+                    # check if an entry is being printed and color the name and category name
+                    elif objname == "entries" and (index == 0 or index == 4):
+                        cur.execute("SELECT color FROM categories WHERE name = ?", (r[4],))
+                        color = cur.fetchone()
+                        print(colored(f"{elem:<16}", output.hex_to_rgb(color[0])), end="")
+                    else:
+                        print(f"{elem:<16}", end="")
+
             print()
 
 
@@ -85,24 +122,28 @@ def parse_delete(con: sql.Connection, comp: PYFTComponent, *args) -> None:
     cur.execute(f"SELECT * FROM {objname} WHERE name = ?", (accname,))
     rows = cur.fetchone()
 
-    if len(rows) == 0:
+    if rows is None or len(rows) == 0:
         output.error(f"No {comp.format_name} found with the name \"{accname}\".")
     else:
-        if objname == "accounts":
-            output.warning(f"All entries with the account name \"{accname}\" will be deleted. Proceed? (y/n)")
+        # Delete all entries with the account or category being deleted
+        if objname == "accounts" or objname == "categories":
+            output.warning(f"All entries with the {comp.format_name} name \"{accname}\" will be deleted. Proceed? (y/n)")
 
             confirm = input().lower() == "y"
 
             if not confirm:
                 return
 
-            cur.execute("DELETE FROM entries WHERE accountname = ?", (accname,))
+            cur.execute(f"DELETE FROM entries WHERE {"accountname" if objname == "accounts" else "category"} = ?", (accname,))
+
 
         cur.execute(f"DELETE FROM {objname} WHERE name = ?", (accname,))
         output.success(f"Deleted {comp.format_name} \"{accname}\".")
 
 
 
+
+# Instantiate parser
 parser = PYFTParser(prog="pyft", description="A simple CLI-based financial tracker written in Python.")
 
 parser.add_argument("component", help="The component in which to operate (account, category, or entry)")
@@ -115,19 +156,22 @@ main_args.add_argument("-c", "--create", nargs="+", help="Create a new instance 
 main_group.add_argument("--exempt", action="store_true", help="Tells PYFT to not modify an account's balance based on the amount of a created entry")
 main_args.add_argument("-l", "--list", action="store_true", help="List information about accounts, entries, or categories")
 main_args.add_argument("-d", "--delete", nargs=1, help="Deletes a component by name", metavar="NAME")
+main_args.add_argument("-s", "--summary", nargs=1, help="View a statistical summary of entries for a specific account", metavar="ACCOUNT")
 
 
 
+# Instantiate database connection
 con = sql.connect(DB_NAME)
 cur = con.cursor()
 
+
+
+# Main program logic
 if __name__ == "__main__":
-    if not os.path.exists(DB_NAME):
-        output.warning("No database file has been found. PYFT will not work without a database file. Would you like to create one? (y/n)")
-        will_create = input()
-        if will_create.lower() == "y":
+    with open(DB_NAME, "rb") as f:
+        if len(f.readlines()) == 0:
+            output.warning("No database file detected. PYFT will automatically create one.")
             init_db()
-            output.success("Initialized database file.")
 
     args = parser.parse_args()
 
@@ -142,10 +186,29 @@ if __name__ == "__main__":
             if args.delete:
                 parse_delete(con, Account, args.delete)
 
+            if args.summary:
+                accname = args.summary[0]
+                cur.execute("SELECT amount, category FROM entries WHERE accountname = ? ORDER BY amount DESC", (accname,))
+                res = cur.fetchall()
+
+                if res is None or len(res) == 0:
+                    output.error(f"Account \"{accname}\" has no entries.")
+                else:
+                    amounts = [e[0] for e in res]
+                    credits = [x for x in amounts if x > 0]
+                    debits = [x for x in amounts if x < 0]
+
+                    print(colored(f"Financial summary of account \"{accname}\"", attrs=["bold"]))
+                    print(f"Mean credit\t{(colored("N/A", "red") if len(credits) == 0 else colored(output.currency(sum(credits) / len(credits)), "green"))}")
+                    print(f"Mean debit\t{colored(("N/A" if len(debits) == 0 else output.currency(sum(debits) / len(debits))), "red")}")
+
 
         case "category":
             if args.create:
-                parse_create(con, Category, args.create)
+                if len(args.create[1]) != 6:
+                    output.error("Color must be in hex format (i.e. FFFFFF).")
+                else:
+                    parse_create(con, Category, args.create)
 
             if args.list:
                 parse_list(con, Category)
@@ -177,15 +240,24 @@ if __name__ == "__main__":
                             output.error(f"Unknown account \"{acc_name}\".")
                         else:
                             cur.execute("SELECT * FROM categories WHERE name = ?", (cat_name,))
-                            res = cur.fetchall()
+                            res2 = cur.fetchall()
 
-                            if len(res) == 0:
+                            if len(res2) == 0:
                                 output.error(f"Unknown category \"{cat_name}\".")
                             else:
                                 is_duplicate = parse_create(con, Entry, args.create)
                                 if not is_duplicate and not args.exempt:
                                     cur.execute("UPDATE accounts SET balance = balance + ? WHERE name = ?", (num, acc_name))
 
+                                    if num >= 0:
+                                        output.success(f"Added {output.currency(num)} to account {acc_name}'s balance.")
+                                    else:
+                                        output.success(f"Subtracted {output.currency(num)[1:]} from account {acc_name}'s balance.")
+
+                                    # if balance is less than 0
+                                    new_balance = res[0][1] + num
+                                    if new_balance < 0:
+                                        output.warning(f"Account {acc_name}'s balance is less than 0 ({output.currency(new_balance)})!")
 
             if args.list:
                 parse_list(con, Entry)
@@ -199,3 +271,9 @@ if __name__ == "__main__":
 
     con.commit()
     con.close()
+
+# ACADEMIC INTEGRITY STATEMENT
+# I have not used source code obtained from any other unauthorized
+# source, either modified or unmodified.  Neither have I provided
+# access to my code to another. The project I am submitting
+# is my own original work.

@@ -1,3 +1,24 @@
+# File: components.py
+# Date: 12/5/2025
+# Authors:
+# Mile Stojakovic
+#     mstojako
+#
+# Team: 6
+#
+# ELECTRONIC SIGNATURE
+# Mile Stojakovic
+#
+# The electronic signatures above indicate that the program
+# submitted for evaluation is the combined effort of all
+# team members and that each member of the team was an
+# equal participant in its creation. In addition, each
+# member of the team has a general understanding of
+# all aspects of the program development and execution.
+#
+#  Version 1.0    Original    December 2025
+# Component definitions for PYFT
+
 import sqlite3 as sql
 import datetime as dt
 import output
@@ -46,7 +67,7 @@ class Account(PYFTComponent):
     format_name = "account"
     balance: float
 
-    def __init__(self, name: str, balance: float = 0):
+    def __init__(self, name: str, balance: float):
         super().__init__(name)
         self.balance = balance
 
@@ -123,3 +144,9 @@ def init_db():
 
     con.commit()
     con.close()
+
+# ACADEMIC INTEGRITY STATEMENT
+# I have not used source code obtained from any other unauthorized
+# source, either modified or unmodified.  Neither have I provided
+# access to my code to another. The project I am submitting
+# is my own original work.
