@@ -20,9 +20,9 @@
 # Main program logic for PYFT
 
 import sqlite3 as sql
+import numpy as np
 import argparse
 from termcolor import colored
-from functools import reduce
 from components import *
 import output
 
@@ -198,9 +198,16 @@ if __name__ == "__main__":
                     credits = [x for x in amounts if x > 0]
                     debits = [x for x in amounts if x < 0]
 
-                    print(colored(f"Financial summary of account \"{accname}\"", attrs=["bold"]))
-                    print(f"Mean credit\t{(colored("N/A", "red") if len(credits) == 0 else colored(output.currency(sum(credits) / len(credits)), "green"))}")
-                    print(f"Mean debit\t{colored(("N/A" if len(debits) == 0 else output.currency(sum(debits) / len(debits))), "red")}")
+                    print(colored(f"Financial summary of {accname}", attrs=["bold"]))
+                    print(f"Mean credit\t\t{(colored("N/A", "red") if len(credits) == 0 else colored(output.currency(float(np.mean(credits))), "green"))} (Std. dev. {np.std(credits) : .2f})")
+                    print(f"Median credit\t\t{(colored("N/A", "red") if len(credits) == 0 else colored(output.currency(float(np.median(credits))), "green"))}")
+                    print(f"Mean debit\t\t{colored(("N/A" if len(debits) == 0 else output.currency(float(np.mean(debits)))), "red")} (Std. dev. {np.std(debits) : .2f})")
+                    print(f"Median debit\t\t{(colored("N/A", "red") if len(credits) == 0 else colored(output.currency(float(np.median(debits))), "red"))}")
+                    print(f"Mean entry amount\t{colored("N/A" if len(amounts) == 0 else output.currency(float(np.mean(amounts))), ("green" if sum(amounts) > 0 else "red"))} (Std. dev. {np.std(amounts) : .2f})")
+                    print(f"Median entry amount\t{colored("N/A" if len(amounts) == 0 else output.currency(float(np.median(amounts))), ("green" if np.median(amounts) > 0 else "red"))}")
+                    print(f"Total credit\t\t{colored("N/A", "red") if len(credits) == 0 else colored(output.currency(sum(credits)), "green")}")
+                    print(f"Total debit\t\t{colored("N/A", "red") if len(credits) == 0 else colored(output.currency(sum(debits)), "red")}")
+                    print(colored(f"Grand total\t\t{colored("N/A", "red", attrs=["bold"]) if len(amounts) == 0 else colored(output.currency(sum(amounts)), ("green" if sum(amounts) > 0 else "red"), attrs=["bold"])}", attrs=["bold"]))
 
 
         case "category":
